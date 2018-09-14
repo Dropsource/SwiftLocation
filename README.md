@@ -160,10 +160,21 @@ Timeout can be specified as:
 
 This is an example of the call:
 
+#### Swift 4+
+
 ```swift
-Locator.currentPosition(accuracy: .city).onSuccess { location in
+Locator.currentPosition(accuracy: .room, onSuccess: { location in
+            print("Location found: \(location)")
+        }, onFail: { err, last in
+            print("Failed to get location: \(err)")
+        })
+```
+#### Oldest Swift
+
+```swift
+Locator.currentPosition(accuracy: .city, onSuccess: { location in
 	print("Location found: \(location)")
-}.onFailure { err, last in
+}) { (err,lastLoc) in
 	print("Failed to get location: \(err)")
 }
 ```
@@ -178,16 +189,24 @@ Location is retrived in one shot mode.
 
 Currently four different services are supported:
 
-* `freeGeoIP`: Free GeoIP service [https://freegeoip.net](https://freegeoip.net)
+* `ipStack`: Free IP service (new version of FreeGeoIP) - [ipstack.com](https://ipstack.com/quickstart) **require free API key setup**.
 * `petabyet`: Petabyet service [http://api.petabyet.com/](http://api.petabyet.com/)
 * `smartIP`: SmartIP service [http://smart-ip.net](http://smart-ip.net)
 * `ipApi`: IPApi service [http://ip-api.com](http://ip-api.com)
 
+NOTE:
+
+- `freeGeoIP` was replaced by ipStack since version 3.3.0+.
+
 Example:
 
 ```swift
-Locator.currentPosition(usingIP: .smartIP, onSuccess: { loc in
-	print("Found location: \(loc)")
+// If required by the IP service you should set the API key before doing any request.
+// The following example set the ipStack key (at the time the only service which require a free key).
+Locator.api.ipStack = "API_KEY"
+
+Locator.currentPosition(usingIP: .ipStack, onSuccess: { loc in
+	print("Location found: \(loc)")
 }) { err, _ in
 	print("\(err)")
 }
@@ -269,6 +288,8 @@ Using `Locator` functions:
 * `stopRequest()` to stop a request (both one shot or recurring). It won't execute the block. It's valid both for heading and location requests.
 * `completeLocationRequest()` force the request to complete early, like a manual timeout. It will execute the block (valid only for location requests).
 * `completeAllLocationRequests()` Immediately completes all active location requests and execute associated blocks.
+
+You can also call `stop()` method from the single request object (both `LocationRequest`, `HeadingRequest`).
 
 <a name="heading"/>
 

@@ -65,6 +65,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 				next = 0
 			}
 			self.callbacks[next] = callback
+			self.nextTokenID = next // increment to the next token
 			return next
 		}
 		
@@ -91,6 +92,20 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	
 	/// Core location internal manager
 	internal var manager: CLLocationManager
+	
+	/// A Boolean indicating whether the status bar changes its appearance when location services are used in the background.
+	/// This property affects only apps that received always authorization.
+	/// When such an app moves to the background, the system uses this property to determine whether to
+	/// change the status bar appearance to indicate that location services are in use.
+	///
+	/// Displaying a modified status bar gives the user a quick way to return to your app. The default value of this property is false.
+	/// For apps with when-in-use authorization, the system always changes the status bar appearance when the
+	/// app uses location services in the background.
+	@available(iOS 11, *)
+	public var showsBackgroundLocationIndicator: Bool {
+		set { self.manager.showsBackgroundLocationIndicator = newValue }
+		get { return self.manager.showsBackgroundLocationIndicator }
+	}
 	
 	/// Current queued location requests
 	private var locationRequests = SafeList<LocationRequest>()
@@ -267,20 +282,6 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 		return request
 	}
 	
-	/// Stop running request
-	///
-	/// - Parameter request: request to stop
-	@discardableResult
-	public func stopRequest(_ request: Request) -> Bool {
-		if let r = request as? LocationRequest {
-			return self.stopLocationRequest(r)
-		}
-		if let r = request as? HeadingRequest {
-			return self.stopHeadingRequest(r)
-		}
-		return false
-	}
-	
 	/// HEADING HELPER FUNCTIONS
 
 	/// Add heading request to queue
@@ -302,8 +303,12 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	/// Start updating heading service if needed
 	private func startUpdatingHeadingIfNeeded() {
 		guard self.headingRequests.count > 0 else { return }
-		self.manager.startUpdatingHeading()
-		self.isUpdatingHeading = true
+		// Request authorization if not set yet
+		if self.requestAuthorizationIfNeeded() == true {
+			// already authorized, start monitoring heading
+			self.manager.startUpdatingHeading()
+			self.isUpdatingHeading = true
+		}
 	}
 	
 	/// Stop heading services if possible
@@ -320,7 +325,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	/// - Parameter request: request to remove
 	/// - Returns: `true` if removed
 	@discardableResult
-	private func stopHeadingRequest(_ request: HeadingRequest) -> Bool {
+	public func stopHeadingRequest(_ request: HeadingRequest) -> Bool {
 		let removed = self.headingRequests.remove(request)
 		self.stopUpdatingHeadingIfPossible()
 		return removed
@@ -333,7 +338,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	/// - Parameter request: request
 	/// - Returns: `true` if request is removed
 	@discardableResult
-	private func stopLocationRequest(_ request: LocationRequest?) -> Bool {
+	public func stopLocationRequest(_ request: LocationRequest?) -> Bool {
 		guard let r = request else { return false }
 		
 		if r.isRecurring { // Recurring requests can only be canceled
@@ -441,14 +446,17 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	/// If you need to set the authorization manually be sure to call this function before adding any request.
 	///
 	/// - Parameter type: authorization level, `nil` to use internal deterministic algorithm
-	public func requestAuthorizationIfNeeded(_ type: AuthorizationLevel? = nil) {
+	/// - Returns: `true` if authorization is already in place (accepted/denied), false if not determined yet
+	@discardableResult
+	public func requestAuthorizationIfNeeded(_ type: AuthorizationLevel? = nil) -> Bool {
 		let currentAuthLevel = CLLocationManager.authorizationStatus()
-		guard currentAuthLevel == .notDetermined else { return } // already authorized
+		guard currentAuthLevel == .notDetermined else { return true } // already authorized
 		
 		// Level to set is the one passed as argument or, if value is `nil`
 		// is determined by reading values in host application's Info.plist
 		let levelToSet = type ?? CLLocationManager.authorizationLevelFromInfoPlist
 		self.manager.requestAuthorization(level: levelToSet)
+		return false
 	}
 	
 	// Iterates over the array of active location requests to check and see
@@ -456,6 +464,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	// can return it without waiting for a new fresh value.
 	private func processLocationRequests() {
 		let location = self.currentLocation
+		print("\(self.locationRequests.list.count) requests in queue")
 		self.locationRequests.list.forEach {
 			if $0.timeout?.hasTimedout ?? false {
 				// Non-recurring request has timed out, complete it
@@ -508,7 +517,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 		// is immediately completed with the appropriate error.
 		DispatchQueue.main.async {
 			if let error = r.error { // failed for some sort of error
-				r.failure?(error,r.location)
+				r.failure?(error,r.location ?? self._currentLocation)
 			} else if let loc = r.location { // succeded
 				r.success?(loc)
 			}
@@ -523,7 +532,7 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 		
 		DispatchQueue.main.async {
 			if let error = r.error {
-				r.failure?(error,r.location)
+				r.failure?(error,r.location ?? self._currentLocation)
 			} else if let loc = r.location {
 				r.success?(loc)
 			}
@@ -618,6 +627,12 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 				// Start the timeout timer for location requests that were waiting for authorization
 				$0.timeout?.startTimeout()
 			})
+			
+			// start heading if necessary
+			if self.headingRequests.count > 0 {
+				self.manager.startUpdatingHeading()
+				self.isUpdatingHeading = true
+			}
 		}
 	}
 	
@@ -637,7 +652,9 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 					r.failure?(err)
 					self.stopHeadingRequest(r)
 				} else {
-					r.success?(r.heading!)
+					if let validHeading = r.heading {
+						r.success?(validHeading)
+					}
 				}
 			}
 		}
