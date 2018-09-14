@@ -41,13 +41,6 @@ public let Locator: LocatorManager = LocatorManager.shared
 public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	
 	// MARK: PROPERTIES
-
-	public class APIs {
-		
-		/// Google API key
-		public var googleAPIKey: String?
-		
-	}
 	
 	public class Events {
 		
@@ -93,9 +86,6 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	/// Events listener
 	public private(set) var events: Events = Events()
 	
-	/// Api key for helper services
-	public private(set) var api = APIs()
-	
 	/// Shared instance of the location manager
 	internal static let shared = LocatorManager()
 	
@@ -107,12 +97,6 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 	
 	/// Current queued heading requests
 	private var headingRequests = SafeList<HeadingRequest>()
-	
-	/// Geocoder requests
-	internal var geocoderRequests = SafeList<GeocoderRequest>()
-	
-	/// Ip requests
-	internal var ipLocationRequests = SafeList<IPLocationRequest>()
 
 	/// `true` if service is currently updating current location
 	public private(set) var isUpdatingLocation: Bool = false
@@ -214,27 +198,6 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 		self.addLocation(request)
 		return request
 	}
-	
-	/// Get the current position using the IP address of the device (one shot).
-	/// Location is not very accurate but it does not require user authorizations.
-	///
-	/// - Parameters:
-	///   - usingIP: IP address
-	///   - timeout: timeout interval
-	///   - onSuccess: success callback
-	///   - onFail: failure callback
-	/// - Returns: request
-	@discardableResult
-	public func currentPosition(usingIP service: IPService, timeout: TimeInterval? = nil,
-	                            onSuccess: @escaping LocationRequest.Success, onFail: @escaping LocationRequest.Failure) -> IPLocationRequest {
-		let request = IPLocationRequest(service, timeout: timeout)
-		self.ipLocationRequests.add(request)
-		request.success = onSuccess
-		request.failure = onFail
-		// execute
-		request.execute()
-		return request
-	}
 
 	/// Creates a subscription for location updates that will execute the block once per update
 	/// indefinitely (until canceled), regardless of the accuracy of each location.
@@ -277,77 +240,6 @@ public class LocatorManager: NSObject, CLLocationManagerDelegate {
 		request.failure = onFail
 		// Append to the queue
 		self.addLocation(request)
-		return request
-	}
-	
-	// MARK: REVERSE GEOCODING
-	
-	/// Get the location from address string and return a `CLLocation` object.
-	/// Request is started automatically.
-	///
-	/// - Parameters:
-	///   - address: address string or place to search
-	///   - region: A geographical region to use as a hint when looking up the specified address. Specifying a region lets you prioritize
-	/// 			the returned set of results to locations that are close to some specific geographical area, which is typically
-	///				the user’s current location. It's valid only if you are using apple services.
-	///   - service: service to use, `nil` to user apple's built in service
-	///   - timeout: timeout interval, if `nil` 10 seconds timeout is used
-	///   - onSuccess: callback called on success
-	///   - onFail: callback called on failure
-	/// - Returns: request
-	@discardableResult
-	public func location(fromAddress address: String, in region: CLRegion? = nil,
-	                     using service: GeocoderService? = nil, timeout: TimeInterval? = nil,
-	                     onSuccess: @escaping GeocoderRequest_Success, onFail: @escaping GeocoderRequest_Failure) -> GeocoderRequest {
-		let request = (service ?? .apple).newRequest(operation: .getLocation(address: address, region: region), timeout: timeout)
-		self.geocoderRequests.add(request)
-		request.success = onSuccess
-		request.failure = onFail
-		request.execute()
-		return request
-	}
-
-	/// Get the location data from given coordinates.
-	/// Request is started automatically.
-	///
-	/// - Parameters:
-	///   - coordinates: coordinates to search
-	///   - locale: The locale to use when returning the address information. You might specify a value for this parameter when you want the address returned in a locale that differs from the user's current language settings. Specify nil to use the user's default locale information. It's valid only if you are using apple services.
-	///   - service: service to use, `nil` to user apple's built in service
-	///   - onSuccess: callback called on success
-	///   - onFail: callback called on failure
-	///   - timeout: timeout interval, if `nil` 10 seconds timeout is used
-	///   - timeout: timeout interval, if `nil` 10 seconds timeout is used
-	@discardableResult
-	public func location(fromCoordinates coordinates: CLLocationCoordinate2D, locale: Locale? = nil,
-	                     using service: GeocoderService? = nil, timeout: TimeInterval? = nil,
-	                     onSuccess: @escaping GeocoderRequest_Success, onFail: @escaping GeocoderRequest_Failure) -> GeocoderRequest {
-		let request = (service ?? .apple).newRequest(operation: .getPlace(coordinates: coordinates, locale: locale), timeout: timeout)
-		self.geocoderRequests.add(request)
-		request.success = onSuccess
-		request.failure = onFail
-		request.execute()
-		return request
-	}
-
-	// MARK: AUTOCOMPLETE PLACES & DETAILS
-	
-	/// Autocomplete places from input string. It uses Google Places API for Autocomplete.
-	/// In order to use it you must obtain a free api key and set it to `Locator.apis.googleApiKey` property
-	///
-	/// - Parameters:
-	///   - text: text to search
-	///   - timeout: timeout, `nil` uses default 10-seconds timeout interval
-	///   - onSuccess: success callback
-	///   - onFail: failure callback
-	/// - Returns: request
-	@discardableResult
-    public func autocompletePlaces(with text: String, timeout: TimeInterval? = nil, language: FindPlaceRequest_Google_Language? = nil,
-	                         onSuccess: @escaping FindPlaceRequest_Success, onFail: @escaping FindPlaceRequest_Failure) -> FindPlaceRequest {
-        let request = FindPlaceRequest_Google(input: text, timeout: timeout, language: language)
-		request.success = onSuccess
-		request.failure = onFail
-		request.execute()
 		return request
 	}
 	
